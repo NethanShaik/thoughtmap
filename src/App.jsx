@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import ConceptGraph from './components/ConceptGraph';
 
 function App() {
   const [inputText, setInputText] = useState("");
@@ -13,17 +14,14 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen w-[100vw] bg-gradient-to-b from-blue-900 via-blue-950 to-black text-white">
-
-
-
+    <div className="w-full min-h-screen bg-gradient-to-br from-[#55B6EF] to-[#F6F6DD]">
       <div className="w-full max-w-5xl mx-auto px-6 py-10 flex flex-col items-center gap-6 text-center">
-        <h1 className='text-4xl font-bold text-green-400'> ThoughtMap AI </h1>
-        <p className='text-grey-300'>
+        <h1 className ="text-4xl font-bold"> ThoughtMap AI </h1>
+        <p className='text-grey-300 font-bold'>
           Paste text and we'll visualize how the model understands it.
         </p>
         <textarea
-        className="w-full p-4 rounded-lg bg-gray-800 border border-gray-700 focus:outline-none focus:ring-2 focus:ring-green-400"
+        className="w-full p-4 rounded-lg bg-white/30 border border-gray-700 backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-400"
           rows="6"
           placeholder='Paste your text here...'
           value={inputText}
@@ -31,25 +29,40 @@ function App() {
           />
         <br /><br />
         <button onClick={analyzeText}
-        className="px-6 py-2 bg-green-500 text-black font-semibold rounded-lg hover:bg-green-400 transition">
-          Analyze
+        className="glass-button">
+         <span className='relative z-10'>Analyze </span>
+         <span
+              className="
+                          absolute inset-0
+                          rounded-2xl
+                          bg-gradient-to-br from-white/70 to-transparent
+                          opacity-30
+                          pointer-events-none
+                        "
+          />
         </button>
       {result &&(
         <div className="grid gap-4 pt-4">
-          <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
-            <h3 className="font-semibold text-green-300 mb-1">Main Idea</h3>
-            <p className="text-gray-300">{result.main}</p>
+          <div className="glass-result">
+            <h3 className="font-semibold text-black-300 mb-1">Main Idea</h3>
+            <p className="text-black-300">{result.main}</p>
           </div>
 
-          <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
-            <h3 className="font-semibold text-green-300 mb-1">Author Intent</h3>
+          <div className="glass-result">
+            <h3 className="font-semibold text-black-300 mb-1">Author Intent</h3>
             <p className='text-grey-300'>{result.intent}</p>
           </div>
 
-          <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
-            <h3 className="font-semibold text-green-300 mb-1">Potential Controversy</h3>
+          <div className="glass-result">
+            <h3 className="font-semibold text-black-300 mb-1">Potential Controversy</h3>
             <p className='text-grey-300'>{result.controversy}</p>
         </div>
+        <div className="w-full max-w-4xl pt-6 text-left">
+        <h2 className="text-2xl font-semibold text-black-300 mb-3">
+          Thought Map
+        </h2>
+        <ConceptGraph />
+     </div>
       </div>
       )}
       </div>
