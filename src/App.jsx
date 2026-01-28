@@ -68,6 +68,15 @@ function App() {
     return {main: `${main} (Starts with: "${firstSentence}...")`, intent, controversy};
   }
 
+  const resetAll = () =>{
+    window.scrollTo({top:0, behavior:"smooth"});
+    setTimeout(() => {
+    setInputText("");
+    setResult(null);
+    setGraph({nodes:[], edges:[]});
+    }, 100);
+  };
+
   const analyzeText = () => {
     if (!inputText.trim()) return;
     const concepts = topConcepts(inputText, 8);
@@ -77,7 +86,7 @@ function App() {
     setResult(analysis);
 
     setTimeout(() => {
-      graphRef.current?.scrollIntoView({behaviou:"smooth",block:"start"});
+      graphRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
     }, 0);
   };
 
@@ -96,11 +105,19 @@ function App() {
           onChange={(e) => setInputText(e.target.value)}
           />
         <br /><br />
-        <button onClick={analyzeText}
+       {!result ? (
+         <button onClick={analyzeText}
         className="glass-button">
          <span className='relative z-10'>Analyze </span>
          <span className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/70 to-transparent opacity-30 pointer-events-none"/>
         </button>
+       ):(
+        <button onClick={resetAll}
+          className="glass-button">
+            <span className='relative z-10'>Reset </span>
+            <span className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/70 to-transparent opacity-30 pointer-events-none"/>
+          </button>
+       )}
       {result &&(
         <>
         <div className="grid gap-4 pt-4 w-full max-w-4xl">
