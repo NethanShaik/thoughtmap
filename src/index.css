@@ -56,5 +56,9 @@ body {
     focus:ring-2
     focus:ring-blue-400
   }
+  .react-flow__attribution {
+    display: none !important;
+  }
+  
 }
 
