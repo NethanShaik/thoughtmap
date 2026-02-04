@@ -2,18 +2,29 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from pathlib import Path
 import os
 import json
 import numpy as np
-
 from sentence_transformers import SentenceTransformer
-from google import genai
+from openai import OpenAI
+import requests
 
 
-load_dotenv()
-print("PWD:", os.getcwd())
-print("GEMINI_API_KEY loaded?", bool(os.getenv("GEMINI_API_KEY")))
-print("Key starts with:", (os.getenv("GEMINI_API_KEY") or "")[:6])
+ENV_PATH = Path(__file__).resolve().parent / ".env"
+load_dotenv(dotenv_path = ENV_PATH)
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY","").strip()
+OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL","http://localhost:5173")
+OPENROUTER_APP_NAME = os.getenv("OPENROUTER_APP_NAME", "ThoughtMap AI")
+
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=OPENROUTER_API_KEY,
+    default_headers={
+        "HTTP-Referer": OPENROUTER_SITE_URL,  # optional
+        "X-Title": OPENROUTER_APP_NAME,        # optional
+    },
+)
 
 app = FastAPI()
 
@@ -27,12 +38,9 @@ app.add_middleware(
 
 embed_model = SentenceTransformer("all-MiniLM-L6-v2")
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY","")
-client = genai.Client(api_key = GEMINI_API_KEY)
-
 class AnalyzeRequest(BaseModel):
     text:str
-    edge_threshold: float = 0.55
+    edge_threshold: float = 0.35
 
 def split_into_phrases(text: str):
     raw = [s.strip() for s in text.replace("\n", " ").split(".") if s.strip()]
@@ -53,7 +61,7 @@ def build_graph(phrases, edge_threshold: float):
 
     for i in range(len(phrases)):
         for j in range(i+1, len(phrases)):
-            score = floar(sim[i,j])
+            score = float(sim[i,j])
             if score >= edge_threshold:
                 edges.append({
                     "source": phrases[i],
@@ -63,11 +71,11 @@ def build_graph(phrases, edge_threshold: float):
     return nodes, edges
 
 def gemini_cards(text: str):
-    if client is None:
-        return{
-            "mainIdea": "Gemini not enabled. Add GEMINI_API_KEY in backend/.env",
+    if not OPENROUTER_API_KEY:
+        return {
+            "mainIdea": "OpenRouter not enabled. Add OPENROUTER_API_KEY in backend/.env",
             "authorIntent": "Unknown",
-            "controversy": "Unknown"
+            "controversy": "Unknown",
         }
     
     prompt = f"""
@@ -81,14 +89,37 @@ Rules:
 
 TEXT:
 {text}
-"""
-    resp = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt,
-    )
+""".strip()
+    resp = client.chat.completions.create(
+    model="google/gemma-3-27b-it:free",
+    messages=[
+        {
+            "role": "user",
+            "content": (
+                "You must output ONLY valid JSON. No markdown, no code fences, no extra text.\n\n"
+                + prompt
+            )
+        }
+    ],
+    temperature=0.2,
+)
 
-    raw = resp.text.strip()
-    return json.loads(raw)
+    raw = (resp.choices[0].message.content or "").strip()
+    if raw.startswith("```"):
+        raw = raw.strip("`")
+        raw = raw.replace("json", "", 1).strip()
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # fallback instead of crashing your API
+        return {
+            "mainIdea": "Could not parse model output as JSON.",
+            "authorIntent": "Unknown",
+            "controversy": "Unknown",
+            "raw": raw[:500],  # keep it short so you can debug
+        }
+
+    
 
 @app.get("/")
 def root():
@@ -96,11 +127,16 @@ def root():
 
 @app.get("/models")
 def models():
-    if not client:
-        return {"error": "No GEMINI_API_KEY set"}
-    names = []
-    for m in client.models.list():
-        names.append(m.name)
+    if not OPENROUTER_API_KEY:
+        return {"error": "No OPENROUTER_API_KEY set"}
+    r = requests.get(
+        "https://openrouter.ai/api/v1/models",
+        headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+        timeout=15,
+    )
+    r.raise_for_status()
+    data = r.json().get("data", [])
+    names = [m.get("id") for m in data if m.get("id")]
     return {"models": names[:50], "count": len(names)}
 
 
