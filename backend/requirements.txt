@@ -5,3 +5,4 @@ keybert
 google-generativeai
 python-dotenv
 numpy
+openai

@@ -5,68 +5,8 @@ function App() {
   const graphRef = useRef(null);
   const [inputText, setInputText] = useState("");
   const [result, setResult] = useState(null);
+  const [threshold, setThreshold] = useState(0.2);
   const [graph, setGraph] = useState({nodes: [], edges: []});
-  const STOP = new Set([
-    "the","and","a","to","of","in","is","it","that","for","on","with","as","are",
-    "this","be","by","an","or","from","at","was","were","has","have","had","but",
-   "should","more","most","strictly","proper","without","however","may","might","can","could",
-   "would","will","also","into","over","under","than","then","there","their","these","those",
-   "them","your","about","because","while","which","when","where","what","why","how"
-  ])
-
-  function topConcepts(text, k = 8){
-    const words = text
-    .toLowerCase()
-    .replace(/[^a-z\s]/g," ")
-    .split(/\s+/)
-    .filter(Boolean)
-    .filter(w => w.length >= 4 && !STOP.has(w));
-
-    const freq = new Map();
-    for (const w of words) freq.set(w, (freq.get(w) || 0) + 1);
-
-    return [...freq.entries()]
-    .sort((a,b) => b[1] - a[1])
-    .slice(0,k)
-    .map(([w]) => w);
-  }
-
-  function buildGraph(concepts){
-    const nodes = concepts.map((c,i) => ({
-      id:String(i+1),
-      data: {label:c},
-      position: {x:60 + (i%4)*180, y: 60 + Math.floor(i/4) * 160},
-    }));
-    
-    const edges = concepts.slice(1).map((_,i) => ({
-      id: `e1-${i+2}`,
-      source:"1",
-      target: String(i+2)
-    }));
-    return {nodes,edges};
-
-  }
-
-  function summarizeHeuristic(text,concepts){
-    const firstSentence = text.trim().split(/[.!?]\s/)[0] || "No text provided.";
-    const main = concepts.length
-    ? `Main:theme: ${concepts[0]} (and related: ${concepts.slice(1,4).join(", ") || "-"}).`
-    : "Main theme: (not enough text).";
-
-    const intent = 
-    text.includes("?") ? "Likely asking a question / seeking clarification."
-    : text.toLowerCase().includes("should") || text.toLowerCase().includes("must")
-      ?"Likely giving advice or making a recommendation."
-      :"Likely explaining or describing something.";
-
-    const controversyWords = ["bias", "risk", "concern", "problem", "controversy", "harm", "ethics", "privacy", "transparency"];
-    const hits = controversyWords.filter(w => text.toLowerCase().includes(w));
-    const controversy = hits.length
-    ? `Mentions potential concerns: ${hits.join(", ")}.`
-    : "No obvious controversy keywords detected.";
-
-    return {main: `${main} (Starts with: "${firstSentence}...")`, intent, controversy};
-  }
 
   const resetAll = () =>{
     window.scrollTo({top:0, behavior:"smooth"});
@@ -77,17 +17,54 @@ function App() {
     }, 100);
   };
 
-  const analyzeText = () => {
+  const analyzeText = async() => {
     if (!inputText.trim()) return;
-    const concepts = topConcepts(inputText, 8);
-    const graphData = buildGraph(concepts);
-    const analysis = summarizeHeuristic(inputText, concepts);
-    setGraph(graphData);
-    setResult(analysis);
+    try{
+      const res = await fetch("http://127.0.0.1:8000/analyze",{
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          text: inputText,
+          edge_threshold: Number(threshold),
+        }),
+      });
 
-    setTimeout(() => {
-      graphRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
-    }, 0);
+      const data = await res.json();
+      if(!res.ok || data.error){
+        console.error(data);
+        alert(data.error || "Analyze Failed");
+        return;
+      }
+
+      const mappedNodes = data.nodes.map((n, i) => ({
+        id: n.id,
+        data: { label: n.label },
+        position: { x: 80 + (i % 2) * 420, y: 60 + Math.floor(i / 2) * 160 },
+      }));
+
+      const mappedEdges = data.edges.map((e,i)=>({
+        id: `e-${i}`,
+        source: e.source,
+        target: e.target,
+        label: String(e.weight),
+      }));
+
+      setGraph({nodes: mappedNodes, edges: mappedEdges});
+      
+
+      setResult({
+        main: data.cards.mainIdea,
+        intent: data.cards.authorIntent,
+        controversy: data.cards.controversy,
+      });
+
+      setTimeout(() => {
+        graphRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      },0);
+    } catch(err) {
+      console.error(err);
+      alert("Backend not reachable (check FastAPI is running on :8000)");
+    }
   };
 
   return (
@@ -104,6 +81,25 @@ function App() {
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           />
+
+      <div className="w-full max-w-xl text-left">
+          <label className="font-semibold">
+            Edge threshold: <span className="font-mono">{Number(threshold).toFixed(2)}</span>
+          </label>
+          <input
+            type="range"
+            min="0.10"
+            max="0.40"
+            step="0.01"
+            value={threshold}
+            onChange={(e) => setThreshold(e.target.value)}
+            className="w-full"
+          />
+          <p className="text-sm text-gray-600">
+            Lower = more connections, Higher = stricter.
+          </p>
+        </div>
+
         <br /><br />
        {!result ? (
          <button onClick={analyzeText}

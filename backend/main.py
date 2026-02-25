@@ -9,6 +9,9 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 import requests
+import time
+import random
+from openai import RateLimitError, APIError
 
 
 ENV_PATH = Path(__file__).resolve().parent / ".env"
@@ -45,7 +48,7 @@ class AnalyzeRequest(BaseModel):
 def split_into_phrases(text: str):
     raw = [s.strip() for s in text.replace("\n", " ").split(".") if s.strip()]
     raw = sorted(raw, key=len, reverse=True)
-    phrases = raw[:10] if len(raw) >= 3 else [text.strip()]
+    phrases = raw[:10] if len(raw) >= 2 else [text.strip()]
     return phrases
 
 def cosine_sim_matrix(vectors: np.ndarray) -> np.ndarray:
@@ -70,6 +73,25 @@ def build_graph(phrases, edge_threshold: float):
                 })
     return nodes, edges
 
+def call_llm_with_retry(client, payload, max_retries=5):
+    for attempt in range(max_retries):
+        try:
+            return client.chat.completions.create(**payload)
+
+        except RateLimitError:
+            # exponential backoff (1s, 2s, 4s, 8s...)
+            sleep_s = min(2 ** attempt, 20) + random.uniform(0, 0.5)
+            print(f"Rate limited. Retrying in {sleep_s:.2f}s...")
+            time.sleep(sleep_s)
+
+        except APIError:
+            # temporary provider/server issue
+            sleep_s = min(2 ** attempt, 10) + random.uniform(0, 0.5)
+            print(f"API error. Retrying in {sleep_s:.2f}s...")
+            time.sleep(sleep_s)
+
+    raise RateLimitError("Upstream rate-limited after retries")
+
 def gemini_cards(text: str):
     if not OPENROUTER_API_KEY:
         return {
@@ -90,24 +112,34 @@ Rules:
 TEXT:
 {text}
 """.strip()
-    resp = client.chat.completions.create(
-    model="google/gemma-3-27b-it:free",
-    messages=[
-        {
-            "role": "user",
-            "content": (
-                "You must output ONLY valid JSON. No markdown, no code fences, no extra text.\n\n"
-                + prompt
-            )
-        }
-    ],
-    temperature=0.2,
-)
+    payload = {
+        "model": "google/gemma-3-27b-it:free",
+        "messages": [
+            {
+                "role": "user",
+                "content": (
+                    "You must output ONLY valid JSON. No markdown, no code fences, no extra text.\n\n"
+                    + prompt
+                ),
+            }
+        ],
+        "temperature": 0.2,
+    }
+
+    resp = call_llm_with_retry(client, payload)
 
     raw = (resp.choices[0].message.content or "").strip()
+
     if raw.startswith("```"):
-        raw = raw.strip("`")
-        raw = raw.replace("json", "", 1).strip()
+        raw = raw.strip()
+
+        if raw.startswith("```json"):
+            raw = raw[len("```json"):].strip()
+        elif raw.startswith("```"):
+            raw = raw[len("```"):].strip()
+
+        if raw.endswith("```"):
+            raw = raw[:-3].strip()
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
@@ -118,9 +150,7 @@ TEXT:
             "controversy": "Unknown",
             "raw": raw[:500],  # keep it short so you can debug
         }
-
     
-
 @app.get("/")
 def root():
     return {"Status": "ThoughtMap running"}
@@ -148,9 +178,22 @@ def analyze(req: AnalyzeRequest):
     
     phrases = split_into_phrases(text)
     nodes, edges = build_graph(phrases, req.edge_threshold)
-
-    cards = gemini_cards(text)
-
+    try:
+        cards = gemini_cards(text)
+    except RateLimitError:
+        cards = {
+            "mainIdea": "Provider is temporarily rate-limited. Please retry.",
+            "authorIntent": "Unknown",
+            "controversy": "Unknown",
+        }
+    except Exception as e:
+        print("LLM ERROR:", repr(e))
+        cards = {
+            "mainIdea": "LLM call failed.",
+            "authorIntent": "Unknown",
+            "controversy": "Unknown",
+            "error": str(e)[:200],
+        }
     return{
         "cards": cards,
         "nodes": nodes,
