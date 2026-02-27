@@ -1,5 +1,5 @@
 import ConceptGraph from './components/ConceptGraph';
-import {useRef, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 
 function App() {
   const graphRef = useRef(null);
@@ -7,6 +7,15 @@ function App() {
   const [result, setResult] = useState(null);
   const [threshold, setThreshold] = useState(0.2);
   const [graph, setGraph] = useState({nodes: [], edges: []});
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!result) return;
+  
+    requestAnimationFrame(() => {
+      graphRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [result]);
 
   const resetAll = () =>{
     window.scrollTo({top:0, behavior:"smooth"});
@@ -14,11 +23,13 @@ function App() {
     setInputText("");
     setResult(null);
     setGraph({nodes:[], edges:[]});
+    setLoading(false);
     }, 100);
   };
 
   const analyzeText = async() => {
     if (!inputText.trim()) return;
+    setLoading(true);
     try{
       const res = await fetch("http://127.0.0.1:8000/analyze",{
         method: "POST",
@@ -58,12 +69,11 @@ function App() {
         controversy: data.cards.controversy,
       });
 
-      setTimeout(() => {
-        graphRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      },0);
     } catch(err) {
       console.error(err);
       alert("Backend not reachable (check FastAPI is running on :8000)");
+    } finally{
+      setLoading(false);
     }
   };
 
@@ -102,9 +112,9 @@ function App() {
 
         <br /><br />
        {!result ? (
-         <button onClick={analyzeText}
+         <button onClick={analyzeText} disabled={loading}
         className="glass-button">
-         <span className='relative z-10'>Analyze </span>
+         <span className='relative z-10'>{loading ? "Analyzing..." : "Analyze"}</span>
          <span className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/70 to-transparent opacity-30 pointer-events-none"/>
         </button>
        ):(

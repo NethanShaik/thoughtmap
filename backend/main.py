@@ -24,8 +24,8 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY,
     default_headers={
-        "HTTP-Referer": OPENROUTER_SITE_URL,  # optional
-        "X-Title": OPENROUTER_APP_NAME,        # optional
+        "HTTP-Referer": OPENROUTER_SITE_URL, 
+        "X-Title": OPENROUTER_APP_NAME,       
     },
 )
 
@@ -43,7 +43,7 @@ embed_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 class AnalyzeRequest(BaseModel):
     text:str
-    edge_threshold: float = 0.35
+    edge_threshold: float
 
 def split_into_phrases(text: str):
     raw = [s.strip() for s in text.replace("\n", " ").split(".") if s.strip()]
@@ -73,24 +73,42 @@ def build_graph(phrases, edge_threshold: float):
                 })
     return nodes, edges
 
+class UpstreamRateLimited(Exception):
+    pass
+
 def call_llm_with_retry(client, payload, max_retries=5):
+    last_err = None
+
     for attempt in range(max_retries):
         try:
             return client.chat.completions.create(**payload)
 
-        except RateLimitError:
-            # exponential backoff (1s, 2s, 4s, 8s...)
+        
+        except RateLimitError as e:
+            last_err = e
             sleep_s = min(2 ** attempt, 20) + random.uniform(0, 0.5)
             print(f"Rate limited. Retrying in {sleep_s:.2f}s...")
             time.sleep(sleep_s)
 
-        except APIError:
-            # temporary provider/server issue
+        except APIStatusError as e:
+            last_err = e
+            if getattr(e, "status_code", None) == 429:
+                sleep_s = min(2 ** attempt, 20) + random.uniform(0, 0.5)
+                print(f"429 rate limit. Retrying in {sleep_s:.2f}s...")
+                time.sleep(sleep_s)
+            else:
+                raise
+
+        
+        except (APITimeoutError, APIConnectionError) as e:
+            last_err = e
             sleep_s = min(2 ** attempt, 10) + random.uniform(0, 0.5)
-            print(f"API error. Retrying in {sleep_s:.2f}s...")
+            print(f"Network/timeout. Retrying in {sleep_s:.2f}s...")
             time.sleep(sleep_s)
 
-    raise RateLimitError("Upstream rate-limited after retries")
+    
+    raise UpstreamRateLimited(f"Upstream rate-limited after {max_retries} retries") from last_err
+
 
 def gemini_cards(text: str):
     if not OPENROUTER_API_KEY:
@@ -143,12 +161,11 @@ TEXT:
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        # fallback instead of crashing your API
         return {
             "mainIdea": "Could not parse model output as JSON.",
             "authorIntent": "Unknown",
             "controversy": "Unknown",
-            "raw": raw[:500],  # keep it short so you can debug
+            "raw": raw[:500],  
         }
     
 @app.get("/")
@@ -187,6 +204,7 @@ def analyze(req: AnalyzeRequest):
             "controversy": "Unknown",
         }
     except Exception as e:
+        print("LLM ERROR TYPE", type(e))
         print("LLM ERROR:", repr(e))
         cards = {
             "mainIdea": "LLM call failed.",
