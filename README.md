@@ -36,16 +36,16 @@ Structured JSON Response
 ⚙️ Tech Stack
 <u>Frontend</u>
 
-*React (Vite)
-*Tailwind CSS
-*ReactFlow (Graph Visualization)
+        *React (Vite)
+        *Tailwind CSS
+        *ReactFlow (Graph Visualization)
 
 <u>Backend</u>
-*FastAPI
-*SentenceTransformers (all-MiniLM-L6-v2)
-*NumPy
-*OpenRouter (LLM API)
-*Pydantic
+        *FastAPI
+        *SentenceTransformers (all-MiniLM-L6-v2)
+        *NumPy
+        *OpenRouter (LLM API)
+        *Pydantic
 
 <u>DevOps/Cloud</u>
 
