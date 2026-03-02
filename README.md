@@ -1,25 +1,27 @@
-<h1> Thought Map AI </h1>
+# ThoughtMap AI
 
 Visualize how an AI model semantically understands text using embeddings and LLM reasoning!
 
 ThoughtMap AI transforms raw text into:
 
-🔗 A semantic similarity graph
+- 🔗 A semantic similarity graph  
+- 🧾 AI-generated **Main Idea**  
+- 🎯 Detected **Author Intent**  
+- ⚠️ Potential **Controversy detection**
 
-🧾 AI-generated Main Idea
+Deployed on **Azure Container Apps** with a Dockerized full-stack architecture.
 
-🎯 Detected Author Intent
+---
 
-⚠️ Potential Controversy detection
+## 🚀 Live Demo
 
-Deployed on Azure Container Apps with Dockerized full-stack architecture.
+🌐 **Production URL**  
+https://thoughtmap-app.politeplant-9a9d00ed.canadacentral.azurecontainerapps.io
 
-🚀 Live Demo
+---
 
-🌐 Production URL:
-https://thoughtmap-app.politeplant-9a9d00ed.canadacentral.azurecontainerapps.io)
+## 🏗️ Architecture
 
-🏗️ Architecture
 ```
 User Input (React)
         ↓
@@ -27,76 +29,110 @@ FastAPI Backend
         ↓
 SentenceTransformer Embeddings
         ↓
-Cosine Similarity Graph
+Cosine Similarity Matrix
+        ↓
+Graph Construction
         ↓
 OpenRouter LLM (Gemma)
         ↓
 Structured JSON Response
 ```
-⚙️ Tech Stack
-<u>Frontend</u>
 
-        *React (Vite)
-        *Tailwind CSS
-        *ReactFlow (Graph Visualization)
+---
 
-<u>Backend</u>
-        *FastAPI
-        *SentenceTransformers (all-MiniLM-L6-v2)
-        *NumPy
-        *OpenRouter (LLM API)
-        *Pydantic
+## ⚙️ Tech Stack
 
-<u>DevOps/Cloud</u>
+### Frontend
+- React (Vite)
+- Tailwind CSS
+- ReactFlow (Graph Visualization)
 
-*Docker (multi-stage build)
-*Docker Buildx (multi-arch support)
-*Azure Container Registry (ACR)
-*Azure Container Apps
-*Azure CLI
+### Backend
+- FastAPI
+- SentenceTransformers (`all-MiniLM-L6-v2`)
+- NumPy
+- OpenRouter (LLM API)
+- Pydantic
 
-🧠 How It Works
-1) Phrase Extraction
-   Text is split into meaningful sentence fragments.
+### DevOps / Cloud
+- Docker (multi-stage build)
+- Docker Buildx (multi-arch support)
+- Azure Container Registry (ACR)
+- Azure Container Apps
+- Azure CLI
 
- 2)Embedding Generation
-   Each phrase is converted into a dense vector using
-   
-   ```Python
-   SentenceTransformer("all-MiniLM-L6-v2")
-   ```
+---
 
-3) Cosine Similarity
-   Cosine similarity is computed across phrase vectors. Edges are created when similarity exceeds a user-controlled threshold.
+## 🧠 How It Works
 
-4) Graph Construction
-   If similarity >= threshold, an edge is created between phrase nodes.
+### 1️⃣ Phrase Extraction
+Text is split into meaningful sentence fragments.
 
-5) LLM Reasoning
-   The full text is sent to an LLM (Gemma via OpenRouter) to generate:
-   * Main idea
-   * Author Inent
-   * Controversy detection
+### 2️⃣ Embedding Generation
+Each phrase is converted into a dense vector using:
 
-🐳 Docker Setup (Local)
-Build
+```python
+SentenceTransformer("all-MiniLM-L6-v2")
+```
+
+### 3️⃣ Cosine Similarity
+Cosine similarity is computed across phrase vectors.  
+Edges are created when similarity exceeds a user-controlled threshold.
+
+### 4️⃣ Graph Construction
+Phrases become nodes.  
+Similarity relationships become edges.
+
+### 5️⃣ LLM Reasoning
+The full text is sent to a Gemma LLM (via OpenRouter) to generate:
+
+- Main Idea  
+- Author Intent  
+- Controversy detection  
+
+---
+
+## 🐳 Docker Setup (Local)
+
+### Build
 
 ```bash
 docker build -t thoughtmap .
 ```
-Run
+
+### Run
 
 ```bash
 docker run -p 8000:8000 thoughtmap
 ```
 
-Open: http://localhost:8000
+Open:
 
-☁️ Azure Deployment
-1) Build multi-arch image
-   ```bash
+```
+http://localhost:8000
+```
+
+---
+
+## ☁️ Azure Deployment
+
+### 1️⃣ Build multi-arch image
+
+```bash
 docker buildx build \
   --platform linux/amd64 \
   -t <ACR_LOGIN_SERVER>/thoughtmap:latest \
   --push .
+```
+
+### 2️⃣ Deploy to Azure Container Apps
+
+```bash
+az containerapp create \
+  -n thoughtmap-app \
+  -g thoughtmap-rg \
+  --environment thoughtmap-env \
+  --image <ACR_LOGIN_SERVER>/thoughtmap:latest \
+  --ingress external \
+  --target-port 8000
 ```
