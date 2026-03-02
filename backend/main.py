@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from pathlib import Path
@@ -11,8 +13,13 @@ from openai import OpenAI
 import requests
 import time
 import random
-from openai import RateLimitError, APIError
+from openai import RateLimitError, APIConnectionError, APITimeoutError, APIStatusError
 
+# ----------------------------
+# Configuration / Environment
+# ----------------------------
+# Local development convenience: load env vars from backend/.env if present.
+# In production (Azure/AWS), secrets should be injected via platform env vars / secret stores.
 
 ENV_PATH = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path = ENV_PATH)
@@ -20,6 +27,8 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY","").strip()
 OPENROUTER_SITE_URL = os.getenv("OPENROUTER_SITE_URL","http://localhost:5173")
 OPENROUTER_APP_NAME = os.getenv("OPENROUTER_APP_NAME", "ThoughtMap AI")
 
+# OpenAI SDK configured to use OpenRouter as a compatible gateway.
+# Default headers are used by OpenRouter for attribution/analytics
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY,
@@ -31,31 +40,47 @@ client = OpenAI(
 
 app = FastAPI()
 
+# ----------------------------
+# CORS (Cross-Origin Requests)
+# ----------------------------
+# For local dev when frontend runs on Vite (:5173) and backend runs on :8000.
+# In production, the recommended approach is to serve frontend + backend from the same origin,
+# which typically removes the need for CORS.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://127.0.0.1:5173","http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ----------------------------
+# Embedding Model Initialization
+# ----------------------------
+# Load sentence-transformers model once at startup (expensive operation).
+# This is used to embed phrases and compute cosine similarity for the graph edges.
 embed_model = SentenceTransformer("all-MiniLM-L6-v2")
 
+#Request Schema
 class AnalyzeRequest(BaseModel):
     text:str
     edge_threshold: float
 
+#Text Preprocessing Function
 def split_into_phrases(text: str):
     raw = [s.strip() for s in text.replace("\n", " ").split(".") if s.strip()]
     raw = sorted(raw, key=len, reverse=True)
     phrases = raw[:10] if len(raw) >= 2 else [text.strip()]
     return phrases
 
+#Compute cosine similarity for set of vectors
 def cosine_sim_matrix(vectors: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(vectors, axis=1, keepdims=True) + 1e-10
     v = vectors/norms
     return v @ v.T
 
+#Build semantic graph
+#Each phrase becomes a node, edges created between phrases pairs whose cosine similarity>=threshold
 def build_graph(phrases, edge_threshold: float):
     emb = embed_model.encode(phrases, convert_to_numpy=True)
     sim = cosine_sim_matrix(emb)
@@ -73,10 +98,18 @@ def build_graph(phrases, edge_threshold: float):
                 })
     return nodes, edges
 
+#LLM Retry
 class UpstreamRateLimited(Exception):
     pass
 
 def call_llm_with_retry(client, payload, max_retries=5):
+
+    """
+    Call the LLM with exponential backoff for common transient failures:
+      - RateLimitError / 429
+      - timeouts / connection errors
+    """
+
     last_err = None
 
     for attempt in range(max_retries):
@@ -111,6 +144,8 @@ def call_llm_with_retry(client, payload, max_retries=5):
 
 
 def gemini_cards(text: str):
+    #Generate short cards for main ideam author intent, controversy using LLM
+    #Use OpenRouter and requests JSON-only outputs
     if not OPENROUTER_API_KEY:
         return {
             "mainIdea": "OpenRouter not enabled. Add OPENROUTER_API_KEY in backend/.env",
@@ -148,6 +183,7 @@ TEXT:
 
     raw = (resp.choices[0].message.content or "").strip()
 
+     # Defensive cleanup if provider returns fenced code blocks.
     if raw.startswith("```"):
         raw = raw.strip()
 
@@ -158,6 +194,7 @@ TEXT:
 
         if raw.endswith("```"):
             raw = raw[:-3].strip()
+    # Parse JSON response; if parsing fails, return raw snippet for debugging.
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
@@ -167,12 +204,11 @@ TEXT:
             "controversy": "Unknown",
             "raw": raw[:500],  
         }
-    
-@app.get("/")
-def root():
-    return {"Status": "ThoughtMap running"}
 
-@app.get("/models")
+# ----------------------------
+# API Routes
+# ----------------------------
+@app.get("/api/models")
 def models():
     if not OPENROUTER_API_KEY:
         return {"error": "No OPENROUTER_API_KEY set"}
@@ -187,8 +223,16 @@ def models():
     return {"models": names[:50], "count": len(names)}
 
 
-@app.post("/analyze")
+@app.post("/api/analyze")
 def analyze(req: AnalyzeRequest):
+    """
+    Main endpoint:
+      1) split text into phrases
+      2) generate semantic graph (nodes/edges) via embeddings + cosine similarity
+      3) generate LLM "cards" (main idea / intent / controversy)
+
+    Returns both graph data and cards in one response for a single UI action.
+    """
     text = (req.text or "").strip()
     if not text:
         return{"error":"Empty text"}
@@ -217,3 +261,48 @@ def analyze(req: AnalyzeRequest):
         "nodes": nodes,
         "edges":edges
     }
+
+# ----------------------------
+# Static Frontend Hosting (SPA)
+# ----------------------------
+# When Docker builds the frontend, it copies the Vite dist/ output into backend/static/.
+# We serve:
+#   - "/" -> index.html
+#   - "/assets/*" -> bundled JS/CSS
+#   - any other route -> index.html (SPA routing)
+FRONTEND_DIST = os.path.join(os.path.dirname(__file__), "static")
+INDEX_FILE = os.path.join(FRONTEND_DIST, "index.html")
+
+if os.path.exists(INDEX_FILE):
+    #Serve Vite build assets under /assets
+    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIST, "assets")), name="assets")
+
+    @app.get("/")
+    #Serve the React/Vite index page.
+    def serve_index():
+        return FileResponse(INDEX_FILE)
+
+    @app.get("/{full_path:path}")
+    def serve_spa(full_path: str):
+        """
+        SPA fallback route:
+        - Let /api/* and /health behave as API endpoints (return 404 here)
+        - For all other paths, return index.html so frontend routing works
+        """
+        if full_path.startswith("api/") or full_path.startswith("health"):
+            return {"detail": "Not Found"}
+        return FileResponse(INDEX_FILE)
+
+else:
+
+    @app.get("/")
+    def root():
+        #Fallback when frontend build is not included in image
+        return {"status": "ThoughtMap running (no frontend build found)"}
+
+# ----------------------------
+# Health Check
+# ----------------------------
+@app.get("/health")
+def health():
+    return {"status": "ok"}

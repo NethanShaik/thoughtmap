@@ -9,6 +9,7 @@ function App() {
   const [graph, setGraph] = useState({nodes: [], edges: []});
   const [loading, setLoading] = useState(false);
 
+  //Auto Scroll to results when ready
   useEffect(() => {
     if (!result) return;
   
@@ -17,6 +18,7 @@ function App() {
     });
   }, [result]);
 
+  //Reset application state to clear results, graoh and text
   const resetAll = () =>{
     window.scrollTo({top:0, behavior:"smooth"});
     setTimeout(() => {
@@ -27,11 +29,12 @@ function App() {
     }, 100);
   };
 
+  //Call backend API to generate semantic graph and LLM summary cards
   const analyzeText = async() => {
     if (!inputText.trim()) return;
     setLoading(true);
     try{
-      const res = await fetch("http://127.0.0.1:8000/analyze",{
+      const res = await fetch("/api/analyze",{
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({
@@ -40,6 +43,7 @@ function App() {
         }),
       });
 
+      //Handle Backend errors
       const data = await res.json();
       if(!res.ok || data.error){
         console.error(data);
@@ -47,12 +51,14 @@ function App() {
         return;
       }
 
+      //Map backend nodes to ReactFLow format
       const mappedNodes = data.nodes.map((n, i) => ({
         id: n.id,
         data: { label: n.label },
         position: { x: 80 + (i % 2) * 420, y: 60 + Math.floor(i / 2) * 160 },
       }));
 
+      //Map backend edges to ReactFlow format
       const mappedEdges = data.edges.map((e,i)=>({
         id: `e-${i}`,
         source: e.source,
@@ -60,9 +66,10 @@ function App() {
         label: String(e.weight),
       }));
 
+      //Update graph state
       setGraph({nodes: mappedNodes, edges: mappedEdges});
       
-
+      //Update summary cards
       setResult({
         main: data.cards.mainIdea,
         intent: data.cards.authorIntent,
@@ -80,10 +87,14 @@ function App() {
   return (
     <div className="w-full min-h-screen bg-gradient-to-br from-[#55B6EF] to-[#F6F6DD]">
       <div className="w-full max-w-5xl mx-auto px-6 py-10 flex flex-col items-center gap-6 text-center">
+        {/* App Title */}
+
         <h1 className ="text-4xl font-bold"> ThoughtMap AI </h1>
         <p className='text-grey-300 font-bold'>
+          {/* Subtitle*/}
           Paste text and we'll visualize how the model understands it.
         </p>
+        {/* Input text to be analyzed */}
         <textarea
         className="w-full p-4 rounded-lg bg-white/30 border border-gray-700 backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-blue-400"
           rows="6"
@@ -92,6 +103,7 @@ function App() {
           onChange={(e) => setInputText(e.target.value)}
           />
 
+      {/* Adjust similarity Threshold */}
       <div className="w-full max-w-xl text-left">
           <label className="font-semibold">
             Edge threshold: <span className="font-mono">{Number(threshold).toFixed(2)}</span>
@@ -111,6 +123,7 @@ function App() {
         </div>
 
         <br /><br />
+        {/* Analyze/Reset Button */}
        {!result ? (
          <button onClick={analyzeText} disabled={loading}
         className="glass-button">
@@ -124,8 +137,10 @@ function App() {
             <span className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/70 to-transparent opacity-30 pointer-events-none"/>
           </button>
        )}
+       {/* Render Results only after Analysis*/}
       {result &&(
         <>
+        {/* Summary Cards */}
         <div className="grid gap-4 pt-4 w-full max-w-4xl">
           <div className="glass-result">
             <h3 className="font-semibold text-black-300 mb-1">Main Idea</h3>
@@ -142,6 +157,7 @@ function App() {
             <p className='text-grey-300'>{result.controversy}</p>
           </div>
         </div>
+        {/* Thought Graph Section */}
         <div ref={graphRef} className="w-full max-w-4xl pt-6 text-left">
         <h2 className="text-2xl font-semibold text-black-300 mb-3">
           Thought Map
