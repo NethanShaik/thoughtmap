@@ -18,3 +18,16 @@ Deployed on Azure Container Apps with Dockerized full-stack architecture.
 
 🌐 Production URL:
 https://<your-azure-url>.azurecontainerapps.io
+
+
+User Input (React)
+        ↓
+FastAPI Backend
+        ↓
+SentenceTransformer Embeddings
+        ↓
+Cosine Similarity Graph
+        ↓
+OpenRouter LLM (Gemma)
+        ↓
+Structured JSON Response
