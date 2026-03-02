@@ -62,7 +62,9 @@ Structured JSON Response
  2)Embedding Generation
    Each phrase is converted into a dense vector using
    
-   ```SentenceTransformer("all-MiniLM-L6-v2")```
+   ```Python
+   SentenceTransformer("all-MiniLM-L6-v2")
+   ```
 
 3) Cosine Similarity
    Cosine similarity is computed across phrase vectors. Edges are created when similarity exceeds a user-controlled threshold.
@@ -79,17 +81,22 @@ Structured JSON Response
 🐳 Docker Setup (Local)
 Build
 
-```docker build -t thoughtmap . ```
+```bash
+docker build -t thoughtmap .
+```
 Run
 
-```docker run -p 8000:8000 thoughtmap```
+```bash
+docker run -p 8000:8000 thoughtmap
+```
 
 Open: http://localhost:8000
 
 ☁️ Azure Deployment
 1) Build multi-arch image
-2) 
-   ```docker buildx build \
+   ```bash
+docker buildx build \
   --platform linux/amd64 \
   -t <ACR_LOGIN_SERVER>/thoughtmap:latest \
-  --push .```
+  --push .
+```
