@@ -17,7 +17,7 @@ Deployed on Azure Container Apps with Dockerized full-stack architecture.
 🚀 Live Demo
 
 🌐 Production URL:
-https://<your-azure-url>.azurecontainerapps.io
+https://thoughtmap-app.politeplant-9a9d00ed.canadacentral.azurecontainerapps.io)
 
 ```
 User Input (React)
