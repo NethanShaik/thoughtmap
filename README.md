@@ -61,6 +61,7 @@ Structured JSON Response
 
  2)Embedding Generation
    Each phrase is converted into a dense vector using
+   
    ```SentenceTransformer("all-MiniLM-L6-v2")```
 
 3) Cosine Similarity
@@ -77,13 +78,18 @@ Structured JSON Response
 
 🐳 Docker Setup (Local)
 Build
+
 ```docker build -t thoughtmap . ```
 Run
+
 ```docker run -p 8000:8000 thoughtmap```
+
 Open: http://localhost:8000
 
 ☁️ Azure Deployment
 1) Build multi-arch image
-   ```
-   docker buildx build \--platform linux/amd64 \-t <ACR_LOGIN_SERVER>/thoughtmap:latest \--push .
-  ```
+2) 
+   ```docker buildx build \
+  --platform linux/amd64 \
+  -t <ACR_LOGIN_SERVER>/thoughtmap:latest \
+  --push .```
