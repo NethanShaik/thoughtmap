@@ -1,5 +1,5 @@
 <h1> Thought Map AI </h1>
----
+
 Visualize how an AI model semantically understands text using embeddings and LLM reasoning!
 
 ThoughtMap AI transforms raw text into:
