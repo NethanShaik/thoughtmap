@@ -13,13 +13,6 @@ Deployed on **Azure Container Apps** with a Dockerized full-stack architecture.
 
 ---
 
-## 🚀 Live Demo
-
-🌐 **Production URL**  
-https://thoughtmap-app.politeplant-9a9d00ed.canadacentral.azurecontainerapps.io
-
----
-
 ## 🏗️ Architecture
 
 ```
